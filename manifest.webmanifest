@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "Carnet 5/3/1 — Force & muscle",
+  "short_name": "5/3/1",
+  "description": "Carnet de musculation hors ligne, progression 5/3/1 et sauvegarde JSON.",
+  "lang": "fr-CA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f7",
+  "theme_color": "#195d79",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
