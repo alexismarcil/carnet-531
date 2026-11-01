@@ -27,12 +27,10 @@
   ui = ui && typeof ui === 'object' ? ui : {};
   let cy = db.cycles.some(cycle => cycle.id === (ui.cy ?? legacyUI?.cy)) ? (ui.cy ?? legacyUI.cy) : db.cycles.at(-1).id;
   let selected = Array.isArray(ui.selected) ? [...new Set(ui.selected.filter(C.isLift))] : [];
-  let blocks = ui.blocks && typeof ui.blocks === 'object' && !Array.isArray(ui.blocks) ? ui.blocks : {};
   if (legacyUI && C.LEGACY_DAYS[legacyUI.day]) {
     selected = [...C.LEGACY_DAYS[legacyUI.day]];
-    for (const id of selected) blocks[`${cy}-${id}`] = C.isBlock(legacyUI.b) ? legacyUI.b : 0;
     if (legacyUI.repsActual !== '' && legacyUI.repsActual != null) {
-      const id = selected[0], block = blocks[`${cy}-${id}`];
+      const id = selected[0], block = C.isBlock(legacyUI.b) ? legacyUI.b : 0;
       db.movementDrafts[C.key(cy, block, id)] = C.cleanDraft({...C.getDraft(db, cy, block, id), actualReps: legacyUI.repsActual});
     }
   }
@@ -40,11 +38,11 @@
   ui.tab = ui.tab ?? legacyUI?.tab ?? 'train';
 
   const current = () => db.cycles.find(cycle => cycle.id === cy);
-  const blockFor = id => C.isBlock(blocks[`${cy}-${id}`]) ? blocks[`${cy}-${id}`] : (C.nextBlock(db, cy, id) ?? 2);
+  const blockFor = id => C.nextBlock(db, cy, id);
   const selections = () => selected.map(id => ({id, block: blockFor(id)}));
 
   function saveUI() {
-    try { localStorage.setItem(UIKEY, JSON.stringify({cy, selected, blocks, note: $('note').value, tab: ui.tab})); }
+    try { localStorage.setItem(UIKEY, JSON.stringify({cy, selected, note: $('note').value, tab: ui.tab})); }
     catch { $('status').textContent = 'Stockage indisponible : exporte ton JSON avant de fermer.'; }
   }
 
@@ -70,14 +68,14 @@
   }
 
   function drawProgress() {
+    selected = selected.filter(id => blockFor(id) !== null);
     $('cycle').innerHTML = db.cycles.map(cycle => `<option value="${cycle.id}">#${cycle.id}</option>`).join('');
     $('cycle').value = cy;
     $('progress').innerHTML = `<table class="progress" aria-label="Progression par mouvement"><thead><tr><th scope="col">Mouvement</th>${[0, 1, 2].map(block => `<th scope="col">${'ABC'[block]}</th>`).join('')}</tr></thead><tbody>${C.LIFTS.map(([id, name]) => {
       const done = C.completedBlocks(db, cy, id), next = C.nextBlock(db, cy, id), chosen = selected.includes(id);
-      return `<tr><td><button class="movement ${chosen ? 'active' : ''}" data-toggle="${id}" aria-pressed="${chosen}">${chosen ? '✓ ' : ''}${name}</button></td>${[0, 1, 2].map(block => {
-        const active = chosen && blockFor(id) === block;
+      return `<tr><td><button class="movement ${chosen ? 'active' : ''}" data-toggle="${id}" aria-pressed="${chosen}" ${next === null ? 'disabled' : ''}>${chosen ? '✓ ' : ''}${name}${next === null ? '<br><small>Terminé</small>' : ''}</button></td>${[0, 1, 2].map(block => {
         const state = done.has(block) ? 'enregistré' : next === block ? 'prochain à faire' : 'à faire';
-        return `<td><button class="${done.has(block) ? 'done' : ''} ${next === block ? 'next-block' : ''} ${active ? 'active' : ''}" data-block-id="${id}" data-block="${block}" aria-pressed="${active}" aria-label="${name}, bloc ${'ABC'[block]}, ${state}">${'ABC'[block]}${done.has(block) ? ' ✓' : ''}</button></td>`;
+        return `<td><span class="block-state ${done.has(block) ? 'done' : ''} ${next === block ? 'next-block' : ''}" aria-label="${name}, bloc ${'ABC'[block]}, ${state}">${'ABC'[block]}${done.has(block) ? ' ✓' : ''}</span></td>`;
       }).join('')}</tr>`;
     }).join('')}</tbody></table>`;
     const left = C.remaining(db, cy);
@@ -92,10 +90,8 @@
     $('moves').innerHTML = !selected.length ? '<p class="empty">Choisis les mouvements que tu fais aujourd’hui dans le tableau.</p>' : selected.map(id => {
       const block = blockFor(id), draft = C.getDraft(db, cy, block, id), tm = Number(current().tms[id]) || 0;
       const pct = C.WEIGHTS[block][draft.style === 'ssl' ? 1 : 0];
-      const done = C.completedBlocks(db, cy, id).has(block);
       return `<article class="card"><div class="flex"><h2>${C.label(id)}</h2><span class="pill">TM ${tm ? fmt(tm) : '—'} kg</span></div>
-        <div class="flex work-label"><label>Bloc <select data-movement-block="${id}" aria-label="Bloc pour ${C.label(id)}">${[0, 1, 2].map(b => `<option value="${b}" ${b === block ? 'selected' : ''}>${'ABC'[b]} (${Math.round(C.WEIGHTS[b][2] * 100)} %)</option>`).join('')}</select></label><button data-remove="${id}" aria-label="Retirer ${C.label(id)} de cette séance">Retirer</button></div>
-        ${done ? '<p class="warn">Ce bloc est déjà enregistré pour ce mouvement. Une confirmation sera demandée pour le refaire.</p>' : ''}
+        <div class="flex work-label"><span class="pill" data-current-block="${id}">Bloc ${'ABC'[block]} · ${Math.round(C.WEIGHTS[block][2] * 100)} % · automatique</span><button data-remove="${id}" aria-label="Retirer ${C.label(id)} de cette séance">Retirer</button></div>
         ${tm ? `<div class="main">${C.WEIGHTS[block].map(p => `<div><strong>${fmt(C.round(tm * p))}</strong><small>kg · 5 reps · ${Math.round(p * 100)} %</small></div>`).join('')}</div>` : '<p class="warn">Entre d’abord ton TM dans l’onglet TM / cycles.</p>'}
         <label class="field" for="actual-${id}">Reps de la dernière série principale (facultatif)</label><input id="actual-${id}" data-actual="${id}" type="number" min="0" max="30" step="1" placeholder="5" value="${draft.actualReps}">
         <div class="flex work-label"><strong>Travail supplémentaire</strong><span class="metric">5 × ${draft.reps}${tm ? ' à ' + fmt(C.round(tm * pct)) + ' kg' : ''}</span></div>
@@ -140,12 +136,8 @@
     }
     saveUI();
   }
-  function setBlock(id, block) {
-    blocks[`${cy}-${id}`] = block;
-    if (!selected.includes(id)) selected.push(id);
-    saveUI(); drawProgress(); drawMoves();
-  }
   function toggleMovement(id) {
+    if (blockFor(id) === null) return;
     if (selected.includes(id)) selected = selected.filter(item => item !== id);
     else selected.push(id);
     saveUI(); drawProgress(); drawMoves();
@@ -159,7 +151,6 @@
   $('progress').onclick = event => {
     const button = event.target.closest('button');
     if (button?.dataset.toggle) toggleMovement(button.dataset.toggle);
-    if (button?.dataset.blockId) setBlock(button.dataset.blockId, Number(button.dataset.block));
   };
   $('moves').onclick = event => {
     const button = event.target.closest('button');
@@ -173,9 +164,6 @@
       draft.completed[Number(data.set)] = !draft.completed[Number(data.set)];
       updateDraft(data.checkId, {completed: draft.completed});
     }
-  };
-  $('moves').onchange = event => {
-    if (event.target.dataset.movementBlock) setBlock(event.target.dataset.movementBlock, Number(event.target.value));
   };
   $('moves').oninput = event => {
     if (event.target.dataset.actual) updateDraft(event.target.dataset.actual, {actualReps: event.target.value}, false);
@@ -198,13 +186,10 @@
     let session;
     try { session = C.buildSession(db, cy, items, $('note').value); }
     catch (error) { alert(error.message); tabs('tm'); return; }
-    const duplicates = items.filter(({id, block}) => C.completedBlocks(db, cy, id).has(block));
-    if (duplicates.length && !confirm('Déjà enregistré : ' + duplicates.map(({id, block}) => `${C.label(id)} ${'ABC'[block]}`).join(', ') + '. Enregistrer une nouvelle séance pour ces blocs ?')) return;
     const candidate = {...db, sessions: [...db.sessions, session], movementDrafts: {...db.movementDrafts}};
     for (const {id, block} of items) delete candidate.movementDrafts[C.key(cy, block, id)];
     if (!writeData(candidate)) return;
     db = candidate;
-    for (const {id} of items) delete blocks[`${cy}-${id}`];
     selected = []; $('note').value = '';
     $('status').textContent = `Séance enregistrée · ${session.movements.map(m => C.label(m.id) + ' ' + 'ABC'[m.block]).join(' + ')} · ${session.date}`;
     render(); saveUI(); window.scrollTo(0, 0);
@@ -236,7 +221,7 @@
       const candidate = C.normalize(JSON.parse(await file.text()));
       if (!confirm('Remplacer les données locales par le JSON importé ?')) return;
       if (!writeData(candidate, true)) return;
-      db = candidate; protectedData = false; cy = db.cycles.at(-1).id; selected = []; blocks = {}; $('note').value = '';
+      db = candidate; protectedData = false; cy = db.cycles.at(-1).id; selected = []; $('note').value = '';
       $('status').textContent = 'Sauvegarde importée. Historique et progression restaurés.';
       render(); tabs('train');
     } catch (error) { alert(error.message); }

@@ -1,4 +1,4 @@
-const CACHE = 'carnet-531-v3';
+const CACHE = 'carnet-531-v4';
 const ASSETS = ['./', './index.html', './style.css', './carnet.js', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
